@@ -1,6 +1,6 @@
 import pandas as pd
 import streamlit as st
-from difflib import get_close_matches
+from difflib import get_close_matches, SequenceMatcher
 import openai
 
 st.set_page_config(page_title="Gaussian Error Helper")
@@ -44,6 +44,9 @@ Explain what it means and suggest a fix in 3–4 sentences."""
     except Exception as e:
         return f"Error calling OpenAI API: {e}"
 
+def similarity(a, b):
+    return SequenceMatcher(None, a, b).ratio()
+
 # Load error data
 df = load_data()
 known_errors = df["Error"].tolist()
@@ -65,23 +68,33 @@ if uploaded_file and found_errors:
 elif user_input:
     final_input = user_input
 
-# Single clean button block
+# Single analyze button
 if st.button("Analyze Error"):
     if final_input:
-        matches = get_close_matches(final_input, df["Error"], n=1, cutoff=0.4)
-
+        matches = get_close_matches(final_input, df["Error"], n=1, cutoff=0.6)
         if matches:
-            row = df[df["Error"] == matches[0]].iloc[0]
-            st.markdown("### Match Found")
-            st.markdown("**Error:** " + row['Error'])
-            st.markdown("**Explanation:** " + row['Explanation'])
-            st.markdown("**Fix:** " + row['Fix'])
-            st.markdown("**Why:** " + row['Why This Works'])
-            st.markdown("[Resource Link](" + row['Resource'] + ")")
-            st.divider()
-            feedback = st.radio("Was this helpful?", ["Yes", "No"], horizontal=True)
+            best_match = matches[0]
+            score = similarity(final_input, best_match)
+            if score > 0.8:
+                row = df[df["Error"] == best_match].iloc[0]
+                st.markdown("### Match Found")
+                st.markdown("**Error:** " + row['Error'])
+                st.markdown("**Explanation:** " + row['Explanation'])
+                st.markdown("**Fix:** " + row['Fix'])
+                st.markdown("**Why:** " + row['Why This Works'])
+                st.markdown("[Resource Link](" + row['Resource'] + ")")
+                st.divider()
+                feedback = st.radio("Was this helpful?", ["Yes", "No"], horizontal=True)
+            else:
+                st.markdown("### No Close Match Found")
+                st.markdown("Trying AI fallback...")
+                gpt_response = query_gpt_fallback(final_input)
+                st.markdown("**AI Analysis:**")
+                st.markdown(gpt_response)
+                st.divider()
+                feedback = st.radio("Was this AI-generated info helpful?", ["Yes", "No"], horizontal=True)
         else:
-            st.markdown("### No Known Match Found")
+            st.markdown("### No Match Found")
             st.markdown("Trying AI fallback...")
             gpt_response = query_gpt_fallback(final_input)
             st.markdown("**AI Analysis:**")
