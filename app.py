@@ -32,8 +32,10 @@ def query_gpt_fallback(error_text):
     if not OPENAI_API_KEY:
         return "OpenAI API key not set. Cannot use fallback analysis."
     openai.api_key = OPENAI_API_KEY
-    prompt = f"A Gaussian job failed with this error message:
-"{error_text}"
+   prompt = (
+    f"A Gaussian job failed with this error message:\n\"{error_text}\"\n"
+    "Explain what it means and suggest a fix in 3–4 sentences."
+)
 Explain what it means and suggest a fix in 3-4 sentences."
     try:
         response = openai.ChatCompletion.create(
