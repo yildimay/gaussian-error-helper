@@ -71,20 +71,19 @@ if st.button("Analyze Error") and final_input:
     if matches:
         row = df[df["Error"] == matches[0]].iloc[0]
         st.markdown("### Match Found")
-        st.markdown(f"**Error:** {row['Error']}")
-        st.markdown(f"**Explanation:** {row['Explanation']}")
-        st.markdown(f"**Fix:** {row['Fix']}")
-        st.markdown(f"**Why:** {row['Why This Works']}")
-        st.markdown(f"[Resource Link]({row['Resource']})")
+        st.markdown("**Error:** " + row['Error'])
+        st.markdown("**Explanation:** " + row['Explanation'])
+        st.markdown("**Fix:** " + row['Fix'])
+        st.markdown("**Why:** " + row['Why This Works'])
+        st.markdown("[Resource Link](" + row['Resource'] + ")")
         st.divider()
         feedback = st.radio("Was this helpful?", ["Yes", "No"], horizontal=True)
     else:
         st.markdown("### No Known Match Found")
         st.markdown("Trying AI fallback...")
         gpt_response = query_gpt_fallback(final_input)
-        st.markdown(f"**AI Analysis:**
-
-{gpt_response}")
+        st.markdown("**AI Analysis:**")
+        st.markdown(gpt_response)
         st.divider()
         feedback = st.radio("Was this AI-generated info helpful?", ["Yes", "No"], horizontal=True)
 
