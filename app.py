@@ -65,34 +65,35 @@ if uploaded_file and found_errors:
 elif user_input:
     final_input = user_input
 
-if st.button("Analyze Error") and final_input:
-    matches = get_close_matches(final_input, df["Error"], n=1, cutoff=0.4)
+# Single clean button block
+if st.button("Analyze Error"):
+    if final_input:
+        matches = get_close_matches(final_input, df["Error"], n=1, cutoff=0.4)
 
-    if matches:
-        row = df[df["Error"] == matches[0]].iloc[0]
-        st.markdown("### Match Found")
-        st.markdown("**Error:** " + row['Error'])
-        st.markdown("**Explanation:** " + row['Explanation'])
-        st.markdown("**Fix:** " + row['Fix'])
-        st.markdown("**Why:** " + row['Why This Works'])
-        st.markdown("[Resource Link](" + row['Resource'] + ")")
-        st.divider()
-        feedback = st.radio("Was this helpful?", ["Yes", "No"], horizontal=True)
+        if matches:
+            row = df[df["Error"] == matches[0]].iloc[0]
+            st.markdown("### Match Found")
+            st.markdown("**Error:** " + row['Error'])
+            st.markdown("**Explanation:** " + row['Explanation'])
+            st.markdown("**Fix:** " + row['Fix'])
+            st.markdown("**Why:** " + row['Why This Works'])
+            st.markdown("[Resource Link](" + row['Resource'] + ")")
+            st.divider()
+            feedback = st.radio("Was this helpful?", ["Yes", "No"], horizontal=True)
+        else:
+            st.markdown("### No Known Match Found")
+            st.markdown("Trying AI fallback...")
+            gpt_response = query_gpt_fallback(final_input)
+            st.markdown("**AI Analysis:**")
+            st.markdown(gpt_response)
+            st.divider()
+            feedback = st.radio("Was this AI-generated info helpful?", ["Yes", "No"], horizontal=True)
+
+        if uploaded_file:
+            st.markdown("### Last 30 Lines of Your Log File")
+            st.code("\n".join(log_tail))
     else:
-        st.markdown("### No Known Match Found")
-        st.markdown("Trying AI fallback...")
-        gpt_response = query_gpt_fallback(final_input)
-        st.markdown("**AI Analysis:**")
-        st.markdown(gpt_response)
-        st.divider()
-        feedback = st.radio("Was this AI-generated info helpful?", ["Yes", "No"], horizontal=True)
-
-    if uploaded_file:
-        st.markdown("### Last 30 Lines of Your Log File")
-        st.code("\n".join(log_tail))
-
-elif st.button("Analyze Error") and not final_input:
-    st.warning("Please paste an error or upload a file.")
+        st.warning("Please paste an error or upload a file.")
 
 if uploaded_file and not found_errors:
     st.info("No known errors were found in the last 30 lines of the uploaded file.")
