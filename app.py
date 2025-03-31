@@ -3,15 +3,17 @@ import streamlit as st
 from difflib import SequenceMatcher
 import hashlib
 import os
-import openai
+import requests
 
-st.set_page_config(page_title="Gaussian AI Error Assistant")
+st.set_page_config(page_title="Gaussian AI Assistant (Groq-powered)")
 
-st.title("Gaussian AI-Based Error Assistant")
-st.write("Upload a Gaussian log file or paste an error to get AI-powered analysis. First 5 GPT queries per user are free.")
+st.title("Gaussian AI Error Assistant (Powered by Groq/Mixtral)")
+st.write("Upload a Gaussian log file or paste an error to get AI-powered analysis. Powered by the FREE Groq API.")
 
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", "")
 CACHE_FILE = "ai_error_memory.csv"
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "mixtral-8x7b-32768"
+GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
 
 if "query_count" not in st.session_state:
     st.session_state.query_count = 0
@@ -33,26 +35,25 @@ def save_to_memory(log_hash, error_line, gpt_answer):
 def generate_hash(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-def query_gpt(error_text):
-    if not OPENAI_API_KEY:
-        return "OpenAI API key not set. Cannot use fallback analysis."
-    client = openai.OpenAI(api_key=OPENAI_API_KEY)
-    prompt = f"""You are an expert in computational chemistry.
-A Gaussian job failed with this error log or message:
-"{error_text}"
-
-Explain what went wrong and suggest a fix in 3-4 sentences.
-"""
+def query_groq(prompt):
+    if not GROQ_API_KEY:
+        return "Groq API key not set. Cannot use fallback analysis."
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    body = {
+        "model": GROQ_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 350,
+        "temperature": 0.2
+    }
     try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=350,
-            temperature=0.2
-        )
-        return response.choices[0].message.content.strip()
+        response = requests.post(GROQ_API_URL, headers=headers, json=body)
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:
-        return f"Error calling OpenAI API: {e}"
+        return f"Error calling Groq API: {e}"
 
 def extract_log_tail(file, n=30):
     lines = file.read().decode("utf-8", errors="ignore").splitlines()
@@ -86,9 +87,15 @@ if st.button("Analyze with AI"):
             st.error("🚫 You've reached the free usage limit. Please subscribe for unlimited access.")
         else:
             st.info("🔍 No match found in memory. Asking AI...")
-            gpt_response = query_gpt(error_text)
-            save_to_memory(log_hash, error_text.splitlines()[-1], gpt_response)
+            prompt = f"""You are an expert in computational chemistry.
+A Gaussian job failed with this error log or message:
+"{error_text}"
+
+Explain what went wrong and suggest a fix in 3-4 sentences.
+"""
+            ai_response = query_groq(prompt)
+            save_to_memory(log_hash, error_text.splitlines()[-1], ai_response)
             st.success("🤖 AI Suggestion:")
-            st.markdown(gpt_response)
+            st.markdown(ai_response)
             st.session_state.query_count += 1
-            st.info(f"Remaining free GPT queries: {MAX_FREE_QUERIES - st.session_state.query_count}")
+            st.info(f"Remaining free GPT-style queries: {MAX_FREE_QUERIES - st.session_state.query_count}")
