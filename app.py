@@ -42,18 +42,21 @@ def query_groq(prompt):
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
-    body = {
+    payload = {
         "model": GROQ_MODEL,
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 350,
-        "temperature": 0.2
+        "max_tokens": 300,
+        "temperature": 0.7
     }
     try:
-        response = requests.post(GROQ_API_URL, headers=headers, json=body)
+        response = requests.post(GROQ_API_URL, headers=headers, json=payload)
         response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"].strip()
+        data = response.json()
+        return data["choices"][0]["message"]["content"].strip()
+    except requests.exceptions.HTTPError as http_err:
+        return f"HTTP error from Groq API: {http_err}\nResponse: {response.text}"
     except Exception as e:
-        return f"Error calling Groq API: {e}"
+        return f"Other error: {e}"
 
 def extract_log_tail(file, n=30):
     lines = file.read().decode("utf-8", errors="ignore").splitlines()
