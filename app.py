@@ -2,8 +2,8 @@ import pandas as pd
 import streamlit as st
 from difflib import SequenceMatcher
 import hashlib
-import openai
 import os
+import openai
 
 st.set_page_config(page_title="Gaussian AI Error Assistant")
 
@@ -36,7 +36,7 @@ def generate_hash(text):
 def query_gpt(error_text):
     if not OPENAI_API_KEY:
         return "OpenAI API key not set. Cannot use fallback analysis."
-    openai.api_key = OPENAI_API_KEY
+    client = openai.OpenAI(api_key=OPENAI_API_KEY)
     prompt = f"""You are an expert in computational chemistry.
 A Gaussian job failed with this error log or message:
 "{error_text}"
@@ -44,13 +44,13 @@ A Gaussian job failed with this error log or message:
 Explain what went wrong and suggest a fix in 3-4 sentences.
 """
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=350,
             temperature=0.2
         )
-        return response['choices'][0]['message']['content'].strip()
+        return response.choices[0].message.content.strip()
     except Exception as e:
         return f"Error calling OpenAI API: {e}"
 
