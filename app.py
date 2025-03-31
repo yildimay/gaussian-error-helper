@@ -12,7 +12,7 @@ st.write("Upload a Gaussian log file or paste an error to get AI-powered analysi
 
 CACHE_FILE = "ai_error_memory.csv"
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "mixtral-8x7b-32768"
+GROQ_MODEL = "llama3-8b-8192"
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
 
 if "query_count" not in st.session_state:
