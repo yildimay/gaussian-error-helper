@@ -1,112 +1,94 @@
 import pandas as pd
 import streamlit as st
-from difflib import get_close_matches, SequenceMatcher
+from difflib import SequenceMatcher
+import hashlib
 import openai
+import os
 
-st.set_page_config(page_title="Gaussian Error Helper")
+st.set_page_config(page_title="Gaussian AI Error Assistant")
 
-st.title("Gaussian Error Helper")
-st.write("Paste a Gaussian error message or upload a .log/.out file to get structured analysis and suggestions.")
+st.title("Gaussian AI-Based Error Assistant")
+st.write("Upload a Gaussian log file or paste an error to get AI-powered analysis. First 5 GPT queries per user are free.")
 
-# --- SETTINGS ---
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", "")  # Optional: add your API key in Streamlit Cloud Secrets
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", "")
+CACHE_FILE = "ai_error_memory.csv"
+
+if "query_count" not in st.session_state:
+    st.session_state.query_count = 0
+
+MAX_FREE_QUERIES = 5
+
+if not os.path.exists(CACHE_FILE):
+    pd.DataFrame(columns=["log_hash", "error_line", "gpt_answer"]).to_csv(CACHE_FILE, index=False)
 
 @st.cache_data
-def load_data():
-    url = "https://docs.google.com/spreadsheets/d/1L-8Tu7hquBB468Dd7mwdzTQst2fj4syWYWD9-3TMGo0/export?format=csv&gid=0"
-    return pd.read_csv(url)
+def load_memory():
+    return pd.read_csv(CACHE_FILE)
 
-def extract_known_errors(log_lines, known_errors):
-    found = []
-    for line in log_lines:
-        for error in known_errors:
-            if error.lower() in line.lower():
-                found.append(error)
-    return list(set(found))
+def save_to_memory(log_hash, error_line, gpt_answer):
+    new_entry = pd.DataFrame([[log_hash, error_line, gpt_answer]], columns=["log_hash", "error_line", "gpt_answer"])
+    existing = pd.read_csv(CACHE_FILE)
+    pd.concat([existing, new_entry], ignore_index=True).to_csv(CACHE_FILE, index=False)
 
-def extract_log_tail(file, n=30):
-    lines = file.read().decode("utf-8", errors="ignore").splitlines()
-    return lines, lines[-n:]
+def generate_hash(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-def query_gpt_fallback(error_text):
+def query_gpt(error_text):
     if not OPENAI_API_KEY:
         return "OpenAI API key not set. Cannot use fallback analysis."
     openai.api_key = OPENAI_API_KEY
-    prompt = f"""A Gaussian job failed with this error message:
+    prompt = f"""You are an expert in computational chemistry.
+A Gaussian job failed with this error log or message:
 "{error_text}"
-Explain what it means and suggest a fix in 3–4 sentences."""
+
+Explain what went wrong and suggest a fix in 3-4 sentences.
+"""
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt}],
-            max_tokens=300, temperature=0.2
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=350,
+            temperature=0.2
         )
         return response['choices'][0]['message']['content'].strip()
     except Exception as e:
         return f"Error calling OpenAI API: {e}"
 
-def similarity(a, b):
-    return SequenceMatcher(None, a, b).ratio()
+def extract_log_tail(file, n=30):
+    lines = file.read().decode("utf-8", errors="ignore").splitlines()
+    return lines[-n:]
 
-# Load error data
-df = load_data()
-known_errors = df["Error"].tolist()
+# Load memory
+memory_df = load_memory()
 
-# Inputs
+# Input
 user_input = st.text_area("Paste a Gaussian error message:")
-uploaded_file = st.file_uploader("Or upload a Gaussian .log or .out file", type=["log", "out"])
+uploaded_file = st.file_uploader("Or upload a Gaussian .log/.out file", type=["log", "out"])
 
-found_errors = []
-log_tail = []
-
+error_text = ""
 if uploaded_file:
-    all_lines, log_tail = extract_log_tail(uploaded_file)
-    found_errors = extract_known_errors(log_tail, known_errors)
-
-final_input = ""
-if uploaded_file and found_errors:
-    final_input = found_errors[0]
+    log_tail = extract_log_tail(uploaded_file)
+    error_text = "\n".join(log_tail)
 elif user_input:
-    final_input = user_input
+    error_text = user_input.strip()
 
-# Single analyze button
-if st.button("Analyze Error"):
-    if final_input:
-        matches = get_close_matches(final_input, df["Error"], n=1, cutoff=0.6)
-        if matches:
-            best_match = matches[0]
-            score = similarity(final_input, best_match)
-            if score > 0.8:
-                row = df[df["Error"] == best_match].iloc[0]
-                st.markdown("### Match Found")
-                st.markdown("**Error:** " + row['Error'])
-                st.markdown("**Explanation:** " + row['Explanation'])
-                st.markdown("**Fix:** " + row['Fix'])
-                st.markdown("**Why:** " + row['Why This Works'])
-                st.markdown("[Resource Link](" + row['Resource'] + ")")
-                st.divider()
-                feedback = st.radio("Was this helpful?", ["Yes", "No"], horizontal=True)
-            else:
-                st.markdown("### No Close Match Found")
-                st.markdown("Trying AI fallback...")
-                gpt_response = query_gpt_fallback(final_input)
-                st.markdown("**AI Analysis:**")
-                st.markdown(gpt_response)
-                st.divider()
-                feedback = st.radio("Was this AI-generated info helpful?", ["Yes", "No"], horizontal=True)
-        else:
-            st.markdown("### No Match Found")
-            st.markdown("Trying AI fallback...")
-            gpt_response = query_gpt_fallback(final_input)
-            st.markdown("**AI Analysis:**")
-            st.markdown(gpt_response)
-            st.divider()
-            feedback = st.radio("Was this AI-generated info helpful?", ["Yes", "No"], horizontal=True)
-
-        if uploaded_file:
-            st.markdown("### Last 30 Lines of Your Log File")
-            st.code("\n".join(log_tail))
+if st.button("Analyze with AI"):
+    if not error_text:
+        st.warning("Please paste an error message or upload a file.")
     else:
-        st.warning("Please paste an error or upload a file.")
+        log_hash = generate_hash(error_text)
+        memory_match = memory_df[memory_df["log_hash"] == log_hash]
 
-if uploaded_file and not found_errors:
-    st.info("No known errors were found in the last 30 lines of the uploaded file.")
+        if not memory_match.empty:
+            st.success("✅ Found in memory (previously solved):")
+            st.markdown(memory_match.iloc[0]["gpt_answer"])
+        elif st.session_state.query_count >= MAX_FREE_QUERIES:
+            st.error("🚫 You've reached the free usage limit. Please subscribe for unlimited access.")
+        else:
+            st.info("🔍 No match found in memory. Asking AI...")
+            gpt_response = query_gpt(error_text)
+            save_to_memory(log_hash, error_text.splitlines()[-1], gpt_response)
+            st.success("🤖 AI Suggestion:")
+            st.markdown(gpt_response)
+            st.session_state.query_count += 1
+            st.info(f"Remaining free GPT queries: {MAX_FREE_QUERIES - st.session_state.query_count}")
